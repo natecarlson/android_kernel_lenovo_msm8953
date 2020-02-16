@@ -44,6 +44,7 @@
 #include <linux/fb.h>
 #include <linux/pm_qos.h>
 #include <linux/cpufreq.h>
+#include <linux/wakelock.h>
 
 #include "gf_spi.h"
 
@@ -57,12 +58,13 @@
 #define GF_SPIDEV_NAME     "goodix,fingerprint"
 /*device name after register in charater*/
 #define GF_DEV_NAME            "goodix_fp"
-#define	GF_INPUT_NAME	    "gf3206"	/*"goodix_fp" */
+#define	GF_INPUT_NAME	    "qwerty"	/*"goodix_fp" */
 
 #define	CHRD_DRIVER_NAME	"goodix_fp_spi"
 #define	CLASS_NAME		    "goodix_fp"
 #define SPIDEV_MAJOR		225	/* assigned */
 #define N_SPI_MINORS		32	/* ... up to 256 */
+
 
 
 struct gf_key_map key_map[] =
@@ -78,6 +80,7 @@ struct gf_key_map key_map[] =
       {  "FORCE",  KEY_F9     },
       {  "CLICK",  KEY_F19    },
 };
+
 
 /**************************debug******************************/
 //#define GF_DEBUG
@@ -101,13 +104,14 @@ static DECLARE_BITMAP(minors, N_SPI_MINORS);
 static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 static struct gf_dev gf;
+static struct wake_lock fp_wakelock;
 static struct class *gf_class;
 static int driver_init_partial(struct gf_dev *gf_dev); 
 
 static void gf_enable_irq(struct gf_dev *gf_dev)
 {
 	if (gf_dev->irq_enabled) {
-		//pr_warn("IRQ has been enabled.\n");
+		pr_warn("IRQ has been enabled.\n");
 	} else {
 		enable_irq_wake(gf_dev->irq);
 		gf_dev->irq_enabled = 1;
@@ -120,7 +124,7 @@ static void gf_disable_irq(struct gf_dev *gf_dev)
 		gf_dev->irq_enabled = 0;
 		disable_irq_wake(gf_dev->irq);
 	} else {
-		//pr_warn("IRQ has been disabled.\n");
+		pr_warn("IRQ has been disabled.\n");
 	}
 }
 
@@ -313,11 +317,9 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #ifdef AP_CONTROL_CLK
    		retval = __get_user(speed, (u32 __user *) arg);
     	if (retval == 0) {
-	    	if (speed > 8 * 1000 * 1000) {
+	    	if (speed > 12 * 1000 * 1000) {
 		    	pr_warn("Set speed:%d is larger than 8Mbps.\n",	speed);
 		    } else {
-			 //   spi_clock_set(gf_dev, speed);
-
 			    spi_clock_set(gf_dev, speed);
 		    }
 	    } else {
@@ -361,14 +363,14 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #ifdef AP_CONTROL_CLK
         gfspi_ioctl_clk_enable(gf_dev);
 #else
-        //pr_info("Doesn't support control clock.\n");
+        pr_info("Doesn't support control clock.\n");
 #endif
 		break;
 	case GF_IOC_CLK_UNREADY:
 #ifdef AP_CONTROL_CLK
         gfspi_ioctl_clk_disable(gf_dev);
 #else
-        //pr_info("Doesn't support control clock.\n");
+        pr_info("Doesn't support control clock.\n");
 #endif
 		break;
 	case GF_IOC_PM_FBCABCK:
@@ -406,26 +408,22 @@ gf_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #endif /*CONFIG_COMPAT*/
 
 static irqreturn_t gf_irq(int irq, void *handle)
-{  
-	
+{
+	char temp = 0;
+
+	wake_lock_timeout(&fp_wakelock,HZ*2);
+
 #if defined(GF_NETLINK_ENABLE)
-
-	struct gf_dev *gf_dev = &gf;
-	char temp = GF_NET_EVENT_IRQ;
-	gf_dbg("enter irq %s\n",__func__); 
-
-	wake_lock_timeout(&gf_dev->ttw_wl, msecs_to_jiffies(1000));
-	
+	temp = GF_NET_EVENT_IRQ;
 	sendnlmsg(&temp);
+	gf_dbg("%s: gf_irq enter\n",__func__); 
 #elif defined (GF_FASYNC)
-		
 	struct gf_dev *gf_dev = &gf;
 	if (gf_dev->async)
 		kill_fasync(&gf_dev->async, SIGIO, POLL_IN);
 #endif
 
 	return IRQ_HANDLED;
-
 }
 
 static int driver_init_partial(struct gf_dev *gf_dev)
@@ -493,13 +491,15 @@ static int gf_open(struct inode *inode, struct file *filp)
 			filp->private_data = gf_dev;
 			nonseekable_open(inode, filp);
 			gf_dbg("Succeed to open device. irq = %d\n",
-							gf_dev->irq);
+				gf_dev->irq);
 			//if (gf_dev->users == 1)
 			//	gf_enable_irq(gf_dev);
-            		/*power the sensor*/
-           		 //gf_power_on(gf_dev);
-		    	//gf_hw_reset(gf_dev, 360);
-           		 gf_dev->device_available = 1;
+			/*power the sensor*/
+			//gf_power_on(gf_dev);
+			//gf_hw_reset(gf_dev, 360);
+			// added by codeworkx
+			driver_init_partial(gf_dev);
+			gf_dev->device_available = 1;
 		}
 	} else {
 		gf_dbg("No device for minor %d\n", iminor(inode));
@@ -550,7 +550,6 @@ static int gf_release(struct inode *inode, struct file *filp)
 	}
 	mutex_unlock(&device_list_lock);
 	FUNC_EXIT();
-	
 	return status;
 }
 
@@ -577,15 +576,14 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 	struct gf_dev *gf_dev;
 	struct fb_event *evdata = data;
 	unsigned int blank;
-
 #if defined(GF_NETLINK_ENABLE)
         char temp = 0;
 #endif
 
 	if (val != FB_EARLY_EVENT_BLANK)
 		return 0;
-	//pr_info("[info] %s go to the goodix_fb_state_chg_callback value = %d\n",
-	//	__func__, (int)val);
+pr_info("[info] %s go to the goodix_fb_state_chg_callback value = %d\n",
+		__func__, (int)val);
 	gf_dev = container_of(nb, struct gf_dev, notifier);
 	if (evdata && evdata->data && val == FB_EARLY_EVENT_BLANK && gf_dev) {
 		blank = *(int *)(evdata->data);
@@ -648,6 +646,26 @@ static void gf_reg_key_kernel(struct gf_dev *gf_dev)
         pr_warn("Failed to register GF as input device.\n");
 }
 
+static ssize_t gf_info_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret_gpio;
+	int gpio = 16;
+	ret_gpio = gpio_get_value(gpio);
+	return sprintf(buf, "%d\n", ret_gpio);
+}
+
+static DEVICE_ATTR(gf_info, 0644, gf_info_show, NULL);
+
+static struct attribute *gf_attributes[] = {
+
+	&dev_attr_gf_info.attr,
+	NULL
+};
+
+static struct attribute_group gf_attribute_group = {
+	.attrs = gf_attributes
+};
 
 #if defined(USE_SPI_BUS)
 static int gf_probe(struct spi_device *spi)
@@ -659,12 +677,11 @@ static int gf_probe(struct platform_device *pdev)
 	int status = -EINVAL;
 	unsigned long minor;
 //	int ret;
+	int err = 0;
 	FUNC_ENTRY();
 
-	pr_warn("--------gf_probe start.--------\n");
 	/* Initialize the driver data */
 	INIT_LIST_HEAD(&gf_dev->device_entry);
-	
 #if defined(USE_SPI_BUS)
 	gf_dev->spi = spi;
 #elif defined(USE_PLATFORM_BUS)
@@ -683,6 +700,11 @@ static int gf_probe(struct platform_device *pdev)
 	if (gf_parse_dts(gf_dev))
 		goto error;
 */
+	err = sysfs_create_group(&pdev->dev.kobj,
+			&gf_attribute_group);
+	if (err < 0){
+		pr_err("%s: fail to create group\n", __func__);
+		}
 	/* If we can allocate a minor number, hook up this device.
 	 * Reusing minors is fine so long as udev or mdev is working.
 	 */
@@ -723,18 +745,15 @@ static int gf_probe(struct platform_device *pdev)
 		if (gfspi_ioctl_clk_init(gf_dev))
 			goto gfspi_probe_clk_init_failed;
 
-	
 		if (gfspi_ioctl_clk_enable(gf_dev))
 			goto gfspi_probe_clk_enable_failed;
 
-		spi_clock_set(gf_dev, 4.8*1000*1000);
+		spi_clock_set(gf_dev, GF_DEFAULT_SPEED);
 #endif
 
 		gf_dev->notifier = goodix_noti_block;
 		fb_register_client(&gf_dev->notifier);
 		gf_reg_key_kernel(gf_dev);
-	
-		wake_lock_init(&gf_dev->ttw_wl, WAKE_LOCK_SUSPEND, "goodix_ttw_wl");//add by davy	
 		
 /*
 	        gf_dev->irq = gf_irq_num(gf_dev);
@@ -753,8 +772,10 @@ static int gf_probe(struct platform_device *pdev)
 			enable_irq_wake(gf_dev->irq);
 			gf_disable_irq(gf_dev);
 		}
-*/		
+*/
 	}
+
+	wake_lock_init(&fp_wakelock,WAKE_LOCK_SUSPEND,"fp_wakelock");
 
 	pr_warn("--------gf_probe end---OK.--------\n");
 	return status;
@@ -769,7 +790,6 @@ error:
 		device_destroy(gf_class, gf_dev->devt);
 		clear_bit(MINOR(gf_dev->devt), minors);
 		mutex_unlock(&device_list_lock);
-		
 #ifdef AP_CONTROL_CLK
 gfspi_probe_clk_enable_failed:
 		gfspi_ioctl_clk_uninit(gf_dev);
@@ -793,6 +813,8 @@ static int gf_remove(struct platform_device *pdev)
 	struct gf_dev *gf_dev = &gf;
 	FUNC_ENTRY();
 
+    wake_lock_destroy(&fp_wakelock);
+
 	/* make sure ops on existing fds can abort cleanly */
 	if (gf_dev->irq)
 		free_irq(gf_dev->irq, gf_dev);
@@ -810,9 +832,7 @@ static int gf_remove(struct platform_device *pdev)
 		kfree(gf_dev);
 
         mutex_unlock(&device_list_lock);
-	
-	wake_lock_destroy(&gf_dev->ttw_wl);//add by davy
-	
+
 	FUNC_EXIT();
 	return 0;
 }
@@ -883,7 +903,6 @@ static int __init gf_init(void)
 	int status;
 	FUNC_ENTRY();
 
-	pr_warn("--------gf_init start.--------\n");
 	/* Claim our 256 reserved device numbers.  Then register a class
 	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
 	 * the driver which manages those device numbers.
@@ -919,8 +938,6 @@ static int __init gf_init(void)
 #endif
 	pr_info(" status = 0x%x\n", status);
 	FUNC_EXIT();
-
-	pr_warn("--------gf_init end---OK.--------\n");
 	return 0;		//status;
 }
 

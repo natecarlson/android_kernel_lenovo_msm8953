@@ -3,7 +3,6 @@
 
 #include <linux/types.h>
 #include <linux/notifier.h>
-#include <linux/wakelock.h>
 /**********************************************************/
 enum FP_MODE{
 	GF_IMAGE_MODE = 0,
@@ -50,7 +49,7 @@ struct gf_key_map
 #define GF_NET_EVENT_IRQ 0
 #define GF_NET_EVENT_FB_BLACK 1
 #define GF_NET_EVENT_FB_UNBLACK 2
-
+#define GF_DEFAULT_SPEED 4800000
 
 static const char * const pctl_names[] = {
 //	"goodixfp_spi_active",
@@ -89,7 +88,6 @@ struct gf_dev {
 	struct notifier_block notifier;
 	char device_available;
 	char fb_black;
-	struct wake_lock ttw_wl;
 };
 
 int gf_parse_dts(struct gf_dev* gf_dev);

@@ -130,7 +130,6 @@ void gf_cleanup(struct gf_dev	* gf_dev)
         devm_gpio_free(&gf_dev->spi->dev,gf_dev->irq_gpio);
         gf_dbg("remove irq_gpio success\n");
     }
- 
     if (gpio_is_valid(gf_dev->reset_gpio))
     {
         
