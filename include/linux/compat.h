@@ -293,6 +293,16 @@ struct compat_old_sigaction {
 };
 #endif
 
+/*
+ * For most but not all architectures, "am I in a compat syscall?" and
+ * "am I a compat task?" are the same question.  For architectures on which
+ * they aren't the same question, arch code can override in_compat_syscall.
+ */
+
+#ifndef in_compat_syscall
+static inline bool in_compat_syscall(void) { return is_compat_task(); }
+#endif
+
 struct compat_statfs;
 struct compat_statfs64;
 struct compat_old_linux_dirent;

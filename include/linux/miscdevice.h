@@ -67,6 +67,20 @@ struct miscdevice  {
 extern int misc_register(struct miscdevice *misc);
 extern int misc_deregister(struct miscdevice *misc);
 
+/*
+ * Helper macro for drivers that don't do anything special in the initcall.
+ * This helps in eleminating of boilerplate code.
+ */
+#define builtin_misc_device(__misc_device) \
+	builtin_driver(__misc_device, misc_register)
+
+/*
+ * Helper macro for drivers that don't do anything special in module init / exit
+ * call. This helps in eleminating of boilerplate code.
+ */
+#define module_misc_device(__misc_device) \
+	module_driver(__misc_device, misc_register, misc_deregister)
+
 #define MODULE_ALIAS_MISCDEV(minor)				\
 	MODULE_ALIAS("char-major-" __stringify(MISC_MAJOR)	\
 	"-" __stringify(minor))
