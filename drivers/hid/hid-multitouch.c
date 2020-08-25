@@ -1647,10 +1647,10 @@ static void mt_release_contacts(struct hid_device *hid)
 	}
 }
 
-static void mt_expired_timeout(struct timer_list *t)
+static void mt_expired_timeout(unsigned long arg)
 {
-	struct mt_device *td = from_timer(td, t, release_timer);
-	struct hid_device *hdev = td->hdev;
+	struct hid_device *hdev = (void *)arg;
+	struct mt_device *td = hid_get_drvdata(hdev);
 
 	/*
 	 * An input report came in just before we release the sticky fingers,
@@ -1707,7 +1707,7 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (id->group != HID_GROUP_MULTITOUCH_WIN_8)
 		hdev->quirks |= HID_QUIRK_MULTI_INPUT;
 
-	timer_setup(&td->release_timer, mt_expired_timeout, 0);
+	setup_timer(&td->release_timer, mt_expired_timeout, (long)hdev);
 
 	ret = hid_parse(hdev);
 	if (ret != 0)

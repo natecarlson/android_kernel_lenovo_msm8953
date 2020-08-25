@@ -33,10 +33,11 @@
 #include <linux/slab.h>
 #include <linux/hid.h>
 #include <linux/mutex.h>
-#include <linux/sched/signal.h>
+#include <linux/signal.h>
 #include <linux/string.h>
 
 #include <linux/hidraw.h>
+#include <uapi/linux/eventpoll.h>
 
 static int hidraw_major;
 static struct cdev hidraw_cdev;

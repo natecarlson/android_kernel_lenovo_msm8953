@@ -31,7 +31,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/kfifo.h>
-#include <linux/sched/signal.h>
+#include <linux/signal.h>
 #include <linux/export.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -39,6 +39,8 @@
 
 #include <linux/hid.h>
 #include <linux/hid-debug.h>
+
+#include <uapi/linux/eventpoll.h>
 
 static struct dentry *hid_debug_root;
 

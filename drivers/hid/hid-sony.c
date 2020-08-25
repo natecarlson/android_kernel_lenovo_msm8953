@@ -548,8 +548,8 @@ struct sony_sc {
 	struct work_struct hotplug_worker;
 	struct work_struct state_worker;
 	void (*send_output_report)(struct sony_sc *);
-	struct power_supply *battery;
-	struct power_supply_desc battery_desc;
+	struct power_supply battery;
+	/* struct power_supply_desc battery_desc; */
 	int device_id;
 	unsigned fw_version;
 	unsigned hw_version;
@@ -1961,6 +1961,25 @@ static int sony_led_blink_set(struct led_classdev *led, unsigned long *delay_on,
 	return 0;
 }
 
+static void sony_leds_remove(struct sony_sc *sc)
+{
+       struct led_classdev *led;
+       int n;
+
+       BUG_ON(!(sc->quirks & SONY_LED_SUPPORT));
+
+       for (n = 0; n < sc->led_count; n++) {
+               led = sc->leds[n];
+               sc->leds[n] = NULL;
+               if (!led)
+                       continue;
+               led_classdev_unregister(led);
+               kfree(led);
+       }
+
+       sc->led_count = 0;
+}
+
 static int sony_leds_init(struct sony_sc *sc)
 {
 	struct hid_device *hdev = sc->hdev;
@@ -2057,14 +2076,21 @@ static int sony_leds_init(struct sony_sc *sc)
 
 		sc->leds[n] = led;
 
-		ret = devm_led_classdev_register(&hdev->dev, led);
+		ret = led_classdev_register(&hdev->dev, led);
 		if (ret) {
 			hid_err(hdev, "Failed to register LED %d\n", n);
-			return ret;
+			sc->leds[n] = NULL;
+			kfree(led);
+			goto error_leds;
 		}
 	}
 
-	return 0;
+	return ret;
+
+error_leds:
+	sony_leds_remove(sc);
+
+	return ret;
 }
 
 static void sixaxis_send_output_report(struct sony_sc *sc)
@@ -2292,7 +2318,8 @@ static int sony_battery_get_property(struct power_supply *psy,
 				     enum power_supply_property psp,
 				     union power_supply_propval *val)
 {
-	struct sony_sc *sc = power_supply_get_drvdata(psy);
+	/*struct sony_sc *sc = power_supply_get_drvdata(psy); */
+	struct sony_sc *sc = container_of(psy, struct sony_sc, battery);
 	unsigned long flags;
 	int ret = 0;
 	u8 battery_charging, battery_capacity, cable_state;
@@ -2334,7 +2361,7 @@ static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
 	const char *battery_str_fmt = append_dev_id ?
 		"sony_controller_battery_%pMR_%i" :
 		"sony_controller_battery_%pMR";
-	struct power_supply_config psy_cfg = { .drv_data = sc, };
+	/* struct power_supply_config psy_cfg = { .drv_data = sc, }; */
 	struct hid_device *hdev = sc->hdev;
 	int ret;
 
@@ -2344,27 +2371,42 @@ static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
 	 */
 	sc->battery_capacity = 100;
 
-	sc->battery_desc.properties = sony_battery_props;
-	sc->battery_desc.num_properties = ARRAY_SIZE(sony_battery_props);
-	sc->battery_desc.get_property = sony_battery_get_property;
-	sc->battery_desc.type = POWER_SUPPLY_TYPE_BATTERY;
-	sc->battery_desc.use_for_apm = 0;
-	sc->battery_desc.name = devm_kasprintf(&hdev->dev, GFP_KERNEL,
+	sc->battery.properties = sony_battery_props;
+	sc->battery.num_properties = ARRAY_SIZE(sony_battery_props);
+	sc->battery.get_property = sony_battery_get_property;
+	sc->battery.type = POWER_SUPPLY_TYPE_BATTERY;
+	sc->battery.use_for_apm = 0;
+	sc->battery.name = devm_kasprintf(&hdev->dev, GFP_KERNEL,
 					  battery_str_fmt, sc->mac_address, sc->device_id);
-	if (!sc->battery_desc.name)
+	if (!sc->battery.name)
 		return -ENOMEM;
 
-	sc->battery = devm_power_supply_register(&hdev->dev, &sc->battery_desc,
-					    &psy_cfg);
-	if (IS_ERR(sc->battery)) {
-		ret = PTR_ERR(sc->battery);
+	ret = power_supply_register(&hdev->dev, &sc->battery);
+	if (ret) {
 		hid_err(hdev, "Unable to register battery device\n");
+		goto err_free;
 		return ret;
 	}
 
-	power_supply_powers(sc->battery, &hdev->dev);
+	power_supply_powers(&sc->battery, &hdev->dev);
 	return 0;
+
+err_free:
+	kfree(sc->battery.name);
+	sc->battery.name = NULL;
+	return ret;
 }
+
+static void sony_battery_remove(struct sony_sc *sc)
+{
+       if (!sc->battery.name)
+               return;
+
+       power_supply_unregister(&sc->battery);
+       kfree(sc->battery.name);
+       sc->battery.name = NULL;
+}
+
 
 /*
  * If a controller is plugged in via USB while already connected via Bluetooth
@@ -2816,6 +2858,10 @@ static int sony_input_configured(struct hid_device *hdev,
 err_close:
 	hid_hw_close(hdev);
 err_stop:
+	if (sc->quirks & SONY_LED_SUPPORT)
+		sony_leds_remove(sc);
+	if (sc->quirks & SONY_BATTERY_SUPPORT)
+		sony_battery_remove(sc);
 	/* Piggy back on the default ds4_bt_ poll_interval to determine
 	 * if we need to remove the file as we don't know for sure if we
 	 * executed that logic.
@@ -2900,6 +2946,14 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 static void sony_remove(struct hid_device *hdev)
 {
 	struct sony_sc *sc = hid_get_drvdata(hdev);
+
+	if (sc->quirks & SONY_LED_SUPPORT)
+		sony_leds_remove(sc);
+
+	if (sc->quirks & SONY_BATTERY_SUPPORT) {
+		hid_hw_close(hdev);
+		sony_battery_remove(sc);
+	}
 
 	hid_hw_close(hdev);
 

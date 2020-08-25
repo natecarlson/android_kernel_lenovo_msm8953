@@ -36,6 +36,8 @@
 #include <linux/hid-debug.h>
 #include <linux/hidraw.h>
 
+#include <linux/overflow.h>
+
 #include "hid-ids.h"
 
 /*

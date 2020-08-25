@@ -27,7 +27,7 @@
 
 #include <linux/poll.h>
 #include <linux/slab.h>
-#include <linux/sched/signal.h>
+#include <linux/signal.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/input.h>
@@ -38,6 +38,8 @@
 #include <linux/vmalloc.h>
 #include <linux/nospec.h>
 #include "usbhid.h"
+
+#include <uapi/linux/eventpoll.h>
 
 #ifdef CONFIG_USB_DYNAMIC_MINORS
 #define HIDDEV_MINOR_BASE	0
