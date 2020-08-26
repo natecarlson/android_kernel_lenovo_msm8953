@@ -2052,10 +2052,11 @@ static int sony_leds_init(struct sony_sc *sc)
 		if (use_ds4_names)
 			name_sz = strlen(dev_name(&hdev->dev)) + strlen(ds4_name_str[n]) + 2;
 
-		led = devm_kzalloc(&hdev->dev, sizeof(struct led_classdev) + name_sz, GFP_KERNEL);
+		led = kzalloc(sizeof(struct led_classdev) + name_sz, GFP_KERNEL);
 		if (!led) {
 			hid_err(hdev, "Couldn't allocate memory for LED %d\n", n);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto error_leds;
 		}
 
 		name = (void *)(&led[1]);
