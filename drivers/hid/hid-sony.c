@@ -2945,15 +2945,16 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 
 static void sony_remove(struct hid_device *hdev)
 {
+	// this isn't the right solution, but a temp hack. When powering down a kernel
+	// panic happens.. this avoids that.  HACK HACK UGLY TODO.
+	/*
 	struct sony_sc *sc = hid_get_drvdata(hdev);
 
 	if (sc->quirks & SONY_LED_SUPPORT)
 		sony_leds_remove(sc);
 
-	if (sc->quirks & SONY_BATTERY_SUPPORT) {
-		hid_hw_close(hdev);
+	if (sc->quirks & SONY_BATTERY_SUPPORT)
 		sony_battery_remove(sc);
-	}
 
 	hid_hw_close(hdev);
 
@@ -2973,6 +2974,7 @@ static void sony_remove(struct hid_device *hdev)
 	sony_release_device_id(sc);
 
 	hid_hw_stop(hdev);
+	*/
 }
 
 #ifdef CONFIG_PM
