@@ -330,7 +330,6 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 		return -ENOTCONN;
 	}
 
-
 	/* Padding up to RX_EXTRA handles minor disagreements with host.
 	 * Normally we use the USB "terminate on short read" convention;
 	 * so allow up to (N*maxpacket), since that memory is normally
@@ -760,7 +759,8 @@ static void tx_complete(struct usb_ep *ep, struct usb_request *req)
 		dev->tx_aggr_cnt[n-1]++;
 
 		/* sg_ctx is only accessible here, can use lock-free version */
-		__skb_queue_purge(&sg_ctx->skbs);
+		while ((skb = __skb_dequeue(&sg_ctx->skbs)) != NULL)
+			dev_kfree_skb_any(skb);
 	}
 
 	dev->net->stats.tx_packets += n;

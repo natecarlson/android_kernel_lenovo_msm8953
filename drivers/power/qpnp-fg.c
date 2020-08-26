@@ -2338,6 +2338,40 @@ static int get_prop_capacity(struct fg_chip *chip)
 	}
 #endif
 
+	if (!chip->profile_loaded && !chip->use_otp_profile) {
+#ifdef CONFIG_MACH_LENOVO_KUNTAO
+		static int shutdown_soc = -22;
+		int j;
+		u8 reg_soc[4];
+		int64_t temp;
+
+		if (shutdown_soc >= 0) {
+			pr_info("using pre shutdown soc %d\n", shutdown_soc);
+			return shutdown_soc;
+		}
+
+		rc = fg_mem_read(chip, reg_soc,
+				fg_data[FG_DATA_BATT_SOC].address,
+				fg_data[FG_DATA_BATT_SOC].len,
+				fg_data[FG_DATA_BATT_SOC].offset, 0);
+		if (rc) {
+			pr_err("Failed to update soc sram data, using default soc\n");
+			return DEFAULT_CAPACITY;
+		}
+
+		temp = 0;
+		for (j = 0; j < fg_data[FG_DATA_BATT_SOC].len; j++)
+			temp |= reg_soc[j] << (8 * j);
+
+		shutdown_soc = div64_s64((temp * 10000), FULL_PERCENT_3B) / 100;
+		pr_info("bat profile not ready, using shutdown soc %d\n",
+				shutdown_soc);
+
+		return shutdown_soc;
+#else
+		return DEFAULT_CAPACITY;
+#endif
+	}
 
 	if (chip->charge_full)
 		return FULL_CAPACITY;
