@@ -549,7 +549,6 @@ struct sony_sc {
 	struct work_struct state_worker;
 	void (*send_output_report)(struct sony_sc *);
 	struct power_supply battery;
-	/* struct power_supply_desc battery_desc; */
 	int device_id;
 	unsigned fw_version;
 	unsigned hw_version;
@@ -2052,10 +2051,11 @@ static int sony_leds_init(struct sony_sc *sc)
 		if (use_ds4_names)
 			name_sz = strlen(dev_name(&hdev->dev)) + strlen(ds4_name_str[n]) + 2;
 
-		led = devm_kzalloc(&hdev->dev, sizeof(struct led_classdev) + name_sz, GFP_KERNEL);
+		led = kzalloc(sizeof(struct led_classdev) + name_sz, GFP_KERNEL);
 		if (!led) {
 			hid_err(hdev, "Couldn't allocate memory for LED %d\n", n);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto error_leds;
 		}
 
 		name = (void *)(&led[1]);
@@ -2318,7 +2318,6 @@ static int sony_battery_get_property(struct power_supply *psy,
 				     enum power_supply_property psp,
 				     union power_supply_propval *val)
 {
-	/*struct sony_sc *sc = power_supply_get_drvdata(psy); */
 	struct sony_sc *sc = container_of(psy, struct sony_sc, battery);
 	unsigned long flags;
 	int ret = 0;
@@ -2361,7 +2360,6 @@ static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
 	const char *battery_str_fmt = append_dev_id ?
 		"sony_controller_battery_%pMR_%i" :
 		"sony_controller_battery_%pMR";
-	/* struct power_supply_config psy_cfg = { .drv_data = sc, }; */
 	struct hid_device *hdev = sc->hdev;
 	int ret;
 
@@ -2376,7 +2374,7 @@ static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
 	sc->battery.get_property = sony_battery_get_property;
 	sc->battery.type = POWER_SUPPLY_TYPE_BATTERY;
 	sc->battery.use_for_apm = 0;
-	sc->battery.name = devm_kasprintf(&hdev->dev, GFP_KERNEL,
+	sc->battery.name = kasprintf(GFP_KERNEL,
 					  battery_str_fmt, sc->mac_address, sc->device_id);
 	if (!sc->battery.name)
 		return -ENOMEM;
@@ -2385,7 +2383,6 @@ static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
 	if (ret) {
 		hid_err(hdev, "Unable to register battery device\n");
 		goto err_free;
-		return ret;
 	}
 
 	power_supply_powers(&sc->battery, &hdev->dev);
@@ -2399,12 +2396,12 @@ err_free:
 
 static void sony_battery_remove(struct sony_sc *sc)
 {
-       if (!sc->battery.name)
-               return;
+	if (!sc->battery.name)
+		return;
 
-       power_supply_unregister(&sc->battery);
-       kfree(sc->battery.name);
-       sc->battery.name = NULL;
+	power_supply_unregister(&sc->battery);
+	kfree(sc->battery.name);
+	sc->battery.name = NULL;
 }
 
 
@@ -2875,6 +2872,7 @@ err_stop:
 	sony_cancel_work_sync(sc);
 	sony_remove_dev_list(sc);
 	sony_release_device_id(sc);
+	hid_hw_stop(hdev);
 	return ret;
 }
 
@@ -2945,9 +2943,6 @@ static int sony_probe(struct hid_device *hdev, const struct hid_device_id *id)
 
 static void sony_remove(struct hid_device *hdev)
 {
-	// this isn't the right solution, but a temp hack. When powering down a kernel
-	// panic happens.. this avoids that.  HACK HACK UGLY TODO.
-	/*
 	struct sony_sc *sc = hid_get_drvdata(hdev);
 
 	if (sc->quirks & SONY_LED_SUPPORT)
@@ -2974,7 +2969,6 @@ static void sony_remove(struct hid_device *hdev)
 	sony_release_device_id(sc);
 
 	hid_hw_stop(hdev);
-	*/
 }
 
 #ifdef CONFIG_PM
