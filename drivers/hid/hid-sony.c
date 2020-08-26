@@ -2948,9 +2948,10 @@ static void sony_remove(struct hid_device *hdev)
 {
 	struct sony_sc *sc = hid_get_drvdata(hdev);
 
-	/* if (sc->quirks & SONY_LED_SUPPORT)
+	if (sc->quirks & SONY_LED_SUPPORT)
 		sony_leds_remove(sc);
 
+	/*
 	if (sc->quirks & SONY_BATTERY_SUPPORT)
 		sony_battery_remove(sc); */
 
