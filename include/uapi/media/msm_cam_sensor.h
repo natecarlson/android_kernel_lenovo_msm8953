@@ -616,5 +616,3 @@ struct sensor_init_cfg_data {
 
 #endif
 
-#endif
-
