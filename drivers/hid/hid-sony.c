@@ -432,12 +432,12 @@ static const struct {int x; int y; } ds4_hat_mapping[] = {
 	{0, 0}
 };
 
-/* static enum power_supply_property sony_battery_props[] = {
+static enum power_supply_property sony_battery_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_SCOPE,
 	POWER_SUPPLY_PROP_STATUS,
-}; */
+};
 
 struct sixaxis_led {
 	u8 time_enabled; /* the total time the led is active (0xff means forever) */
@@ -548,8 +548,7 @@ struct sony_sc {
 	struct work_struct hotplug_worker;
 	struct work_struct state_worker;
 	void (*send_output_report)(struct sony_sc *);
-	/* struct power_supply battery;
-	struct power_supply_desc battery_desc; */
+	struct power_supply battery;
 	int device_id;
 	unsigned fw_version;
 	unsigned hw_version;
@@ -565,8 +564,8 @@ struct sony_sc {
 	u8 state_worker_initialized;
 	u8 defer_initialization;
 	u8 cable_state;
-	/* u8 battery_charging;
-	u8 battery_capacity; */
+	u8 battery_charging;
+	u8 battery_capacity;
 	u8 led_state[MAX_LEDS];
 	u8 led_delay_on[MAX_LEDS];
 	u8 led_delay_off[MAX_LEDS];
@@ -917,8 +916,8 @@ static void sixaxis_parse_report(struct sony_sc *sc, u8 *rd, int size)
 
 	spin_lock_irqsave(&sc->lock, flags);
 	sc->cable_state = cable_state;
-	/* sc->battery_capacity = battery_capacity;
-	sc->battery_charging = battery_charging; */
+	sc->battery_capacity = battery_capacity;
+	sc->battery_charging = battery_charging;
 	spin_unlock_irqrestore(&sc->lock, flags);
 
 	if (sc->quirks & SIXAXIS_CONTROLLER) {
@@ -1072,8 +1071,8 @@ static void dualshock4_parse_report(struct sony_sc *sc, u8 *rd, int size)
 
 	spin_lock_irqsave(&sc->lock, flags);
 	sc->cable_state = cable_state;
-	/* sc->battery_capacity = battery_capacity;
-	sc->battery_charging = battery_charging; */
+	sc->battery_capacity = battery_capacity;
+	sc->battery_charging = battery_charging;
 	spin_unlock_irqrestore(&sc->lock, flags);
 
 	/*
@@ -2315,12 +2314,11 @@ static int sony_init_ff(struct sony_sc *sc)
 
 #endif
 
-/* static int sony_battery_get_property(struct power_supply *psy,
+static int sony_battery_get_property(struct power_supply *psy,
 				     enum power_supply_property psp,
 				     union power_supply_propval *val)
-{ */
-	/*struct sony_sc *sc = power_supply_get_drvdata(psy); */
-/*	struct sony_sc *sc = container_of(psy, struct sony_sc, battery);
+{
+	struct sony_sc *sc = container_of(psy, struct sony_sc, battery);
 	unsigned long flags;
 	int ret = 0;
 	u8 battery_charging, battery_capacity, cable_state;
@@ -2355,29 +2353,28 @@ static int sony_init_ff(struct sony_sc *sc)
 		break;
 	}
 	return ret;
-} */
+}
 
-/* static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
+static int sony_battery_probe(struct sony_sc *sc, int append_dev_id)
 {
 	const char *battery_str_fmt = append_dev_id ?
 		"sony_controller_battery_%pMR_%i" :
-		"sony_controller_battery_%pMR"; */
-	/* struct power_supply_config psy_cfg = { .drv_data = sc, }; */
-	/* struct hid_device *hdev = sc->hdev;
-	intret; */
+		"sony_controller_battery_%pMR";
+	struct hid_device *hdev = sc->hdev;
+	int ret;
 
 	/*
 	 * Set the default battery level to 100% to avoid low battery warnings
 	 * if the battery is polled before the first device report is received.
 	 */
-	/* sc->battery_capacity = 100;
+	sc->battery_capacity = 100;
 
 	sc->battery.properties = sony_battery_props;
 	sc->battery.num_properties = ARRAY_SIZE(sony_battery_props);
 	sc->battery.get_property = sony_battery_get_property;
 	sc->battery.type = POWER_SUPPLY_TYPE_BATTERY;
 	sc->battery.use_for_apm = 0;
-	sc->battery.name = devm_kasprintf(&hdev->dev, GFP_KERNEL,
+	sc->battery.name = kasprintf(GFP_KERNEL,
 					  battery_str_fmt, sc->mac_address, sc->device_id);
 	if (!sc->battery.name)
 		return -ENOMEM;
@@ -2386,7 +2383,6 @@ static int sony_init_ff(struct sony_sc *sc)
 	if (ret) {
 		hid_err(hdev, "Unable to register battery device\n");
 		goto err_free;
-		return ret;
 	}
 
 	power_supply_powers(&sc->battery, &hdev->dev);
@@ -2400,13 +2396,13 @@ err_free:
 
 static void sony_battery_remove(struct sony_sc *sc)
 {
-       if (!sc->battery.name)
-               return;
+	if (!sc->battery.name)
+		return;
 
-       power_supply_unregister(&sc->battery);
-       kfree(sc->battery.name);
-       sc->battery.name = NULL;
-} */
+	power_supply_unregister(&sc->battery);
+	kfree(sc->battery.name);
+	sc->battery.name = NULL;
+}
 
 
 /*
@@ -2836,18 +2832,18 @@ static int sony_input_configured(struct hid_device *hdev,
 			goto err_stop;
 	}
 
-	/* if (sc->quirks & SONY_BATTERY_SUPPORT) {
+	if (sc->quirks & SONY_BATTERY_SUPPORT) {
 		ret = sony_battery_probe(sc, append_dev_id);
 		if (ret < 0)
 			goto err_stop;
-*/
+
 		/* Open the device to receive reports with battery info */
-/*		ret = hid_hw_open(hdev);
+		ret = hid_hw_open(hdev);
 		if (ret < 0) {
 			hid_err(hdev, "hw open failed\n");
 			goto err_stop;
 		}
-	} */
+	}
 
 	if (sc->quirks & SONY_FF_SUPPORT) {
 		ret = sony_init_ff(sc);
@@ -2861,8 +2857,8 @@ err_close:
 err_stop:
 	if (sc->quirks & SONY_LED_SUPPORT)
 		sony_leds_remove(sc);
-	/* if (sc->quirks & SONY_BATTERY_SUPPORT)
-		sony_battery_remove(sc); */
+	if (sc->quirks & SONY_BATTERY_SUPPORT)
+		sony_battery_remove(sc);
 	/* Piggy back on the default ds4_bt_ poll_interval to determine
 	 * if we need to remove the file as we don't know for sure if we
 	 * executed that logic.
@@ -2876,6 +2872,7 @@ err_stop:
 	sony_cancel_work_sync(sc);
 	sony_remove_dev_list(sc);
 	sony_release_device_id(sc);
+	hid_hw_stop(hdev);
 	return ret;
 }
 
@@ -2951,9 +2948,8 @@ static void sony_remove(struct hid_device *hdev)
 	if (sc->quirks & SONY_LED_SUPPORT)
 		sony_leds_remove(sc);
 
-	/*
 	if (sc->quirks & SONY_BATTERY_SUPPORT)
-		sony_battery_remove(sc); */
+		sony_battery_remove(sc);
 
 	hid_hw_close(hdev);
 
